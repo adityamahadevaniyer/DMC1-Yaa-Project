@@ -1,0 +1,133 @@
+---
+title: "KaryoploteR-DMC1-Yaa-aditya"
+author: "Aditya Mahadevan"
+date: "6/21/2022"
+output: html_document
+---
+
+```{r}
+#load all the required packages
+library(GenomicRanges)
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(magrittr)
+library(karyoploteR)
+library(BSgenome.Mmusculus.UCSC.mm39)
+library(TxDb.Mmusculus.UCSC.mm39.refGene) #loading the genes in mm39
+library(org.Mm.eg.db)
+library(here)
+```
+
+
+```{r}
+hotspots = read.delim("bed/B6_BS_R.mm39.bed")
+hotspots.gr <- toGRanges(hotspots)
+tss = read.delim("bed/mm39_gencode_unique_tss.bed")
+tss.gr <- toGRanges(tss)
+```
+
+
+
+```{r}
+## Point to BigWig files for samples
+bw1 <- "~/Documents/DMC1-Yaa-Project/bigwig/mm39/CAST-KI_H3K4me3_chip1_mm39.bw"
+bw2 <- "~/Documents/DMC1-Yaa-Project/bigwig/mm39/CAST-KI_H3K4me3_chip2_mm39.bw"
+bw3 = "bigwig/mm39/B6_HELLS_WT_chip16.bw"
+bw4 = "bigwig/mm39/B6_HELLS_WT_chip17.bw"
+bw5 = "bigwig/mm39/B6_Yaa_chip77.bw"
+bw6 = "bigwig/mm39/B6_Yaa_chip78.bw"
+bw7 = "bigwig/mm39/B6.SB-Yaa_K4me3_chip.bw"
+bw8 = "bigwig/mm39/B6.SB-Yaa_K36me3_chip.bw"
+#bw9 = "bigwig/mm39/B6_Yaa_chip79.bw"
+```
+
+
+```{r}
+# Set karyoploteR drawing parameters
+plot_range <- toGRanges("chrX:168752755- 169324071")
+pp <- getDefaultPlotParams(plot.type=1)
+pp$leftmargin <- 0.15
+pp$topmargin <- 20
+pp$bottommargin <- 15
+pp$ideogramheight <- 4
+pp$data1inmargin <- 10
+#bw.max <- round(max(max(b6.bw$score), max(d2.bw$score)), 1)
+bw.max <- 5
+
+## Open device to save image
+#jpeg(paste0(andir, "/Havcr2_karyoplot_", input1, "_", input2, ".jpg"))
+```
+
+
+```{r}
+# Start Karyoplot object and gather genes
+kp <- plotKaryotype(zoom = tss.gr)
+genes.data <- makeGenesDataFromTxDb(TxDb.Mmusculus.UCSC.mm39.refGene, karyoplot=kp,plot.transcripts = TRUE, plot.transcripts.structure = TRUE)
+genes.data <- addGeneNames(genes.data, orgDb="auto")
+genes.data <- mergeTranscripts(genes.data)
+
+## Plot region of interest
+kp <- plotKaryotype(genome = "mm39", zoom = plot_range, plot.params = pp, cytobands = NULL)
+kpAddBaseNumbers(kp, tick.dist = 50000, minor.tick.dist = 10000,add.units = TRUE, cex=.7, digits = 6)
+kpPlotGenes(kp, data = genes.data, r0=0, r1=0.15, gene.name.cex = 0.7, gene.names = T, avoid.overlapping = T)
+kpAddMainTitle(kp, main= "DSBs at the PAR")
+
+## Add hotspot H3K4me3 peaks
+#at <- autotrack(current.track = 1, total.tracks = 2)
+#kpPlotRegions(kp, tss.gr, col="blue", r0=0.24, r1=0.29)
+#kpAddLabels(kp, labels = "TSS", r0=0.24, r1=0.29, cex=1)
+
+```
+
+
+```{r}
+## Add the first bigwig file (DMC1 ChIP replicate 1)
+kp <- kpPlotBigWig(kp, data=bw1[1], ymax="visible.region", r0=0, r1=0.10)
+kpAxis(kp, ymin=0, r0=0, r1=0.10, cex=.5)
+kpAddLabels(kp, labels = "CAST-KI K4me3-1", r0=0, r1=0.10, cex=1, label.margin = 0.05)
+
+## Add the second bigwig file (DMC1 ChIP replicate 2)
+kp <- kpPlotBigWig(kp, data=bw2[1], ymax="visible.region", r0=0.15, r1=0.25)
+kpAxis(kp, ymin=0, r0=0.15, r1=0.25, cex=.5)
+kpAddLabels(kp, labels = "CAST-KI K4me3-2", r0=0.15, r1=0.25, cex=1, label.margin = 0.05)
+
+## Add the third bigwig file (DMC1 ChIP replicate 2)
+kp <- kpPlotBigWig(kp, data=bw3[1], ymax="visible.region", r0=0.30, r1=0.40)
+kpAxis(kp, ymin=0, r0=0.30, r1=0.40, cex=.5)
+kpAddLabels(kp, labels = "DMC1 B6-1", r0=0.30, r1=0.40, cex=1, label.margin = 0.05)
+
+## Add the fourth bigwig file (DMC1 ChIP replicate 2)
+kp <- kpPlotBigWig(kp, data=bw4[1], ymax="visible.region", r0=0.45, r1=0.55)
+kpAxis(kp, ymin=0, r0=0.45, r1=0.55, cex=.5)
+kpAddLabels(kp, labels = "DMC1 B6-2", r0=0.45, r1=0.55, cex=1, label.margin = 0.05)
+
+## Add the fifth bigwig file (DMC1 ChIP replicate 2)
+kp <- kpPlotBigWig(kp, data=bw5[1], ymax="visible.region", r0=0.60, r1=0.70)
+kpAxis(kp, ymin=0, r0=0.60, r1=0.70, cex=.5)
+kpAddLabels(kp, labels = "DMC1 Yaa-1", r0=0.60, r1=0.70, cex=1, label.margin = 0.05)
+
+
+## Add the sixth bigwig file (DMC1 ChIP replicate 2)
+kp <- kpPlotBigWig(kp, data=bw6[1], ymax="visible.region", r0=0.75, r1=0.85)
+kpAxis(kp, ymin=0, r0=0.75, r1=0.85, cex=.5)
+kpAddLabels(kp, labels = "DMC1 Yaa-2", r0=0.75, r1=0.85, cex=1, label.margin = 0.05)
+
+## Add the seventh bigwig file (DMC1 ChIP replicate 2)
+kp <- kpPlotBigWig(kp, data=bw7[1], ymax="visible.region", r0=0.90, r1=1.0)
+kpAxis(kp, ymin=0, r0=0.90, r1=1.0, cex=.5)
+kpAddLabels(kp, labels = "K4me3 Yaa", r0=0.90, r1=1.0, cex=1, label.margin = 0.05)
+
+#Some issues with the K36me3 yaa . not being recognized by the tool
+## Add the eigth bigwig file (K36me3 Yaa)
+kp <- kpPlotBigWig(kp, data=bw8[1], ymax="visible.region", r0=1.05, r1=1.15)
+kpAxis(kp, ymin=0, r0=1.05, r1=1.15, cex=.5)
+kpAddLabels(kp, labels = "K36me3 Yaa", r0=1.05, r1=1.15, cex=1, label.margin = 0.05)
+#dev.off()
+```
+
+
+```{r}
+#Lets create a function to automatically create karyoplots for n number of bigwig files 
+
+```

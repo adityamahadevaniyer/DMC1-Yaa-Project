@@ -1,0 +1,99 @@
+---
+title: "Mosdepth analysis of Yaa chrX region"
+author: "Aditya Mahadevan"
+date: "19th October 2020"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(zoo)
+library(here)
+library(dplyr)
+options(stringsAsFactors = F)
+```
+
+Import scaled coverage from the mosdepth folder. The bed files were generated from BAM files (aligned to mm39) using the Mosdepth tool from Aaron Quinlan lab. I used the BAM files that were aligned to mm39. 
+
+The four BAM files (mm39-based) that were used to generate coverages-
+1. DMC1 Yaa rep1
+2. DMC1 Yaa rep2
+3. Yaa Input
+4. B6 Input (HELLS DMC1 B6 input)
+
+```{r}
+df <- read.delim("chrX_range_YaaSamples_B6input.mm39.tsv", header = FALSE)
+#sample <- read.delim("191116_atac_mosdepth.tsv")
+names(df) <- c("chr", "start", "end", "DMC1Yaarep1", "DMC1Yaarep2", "YaaInput" , "B6Input")
+
+#the df dataframe has the fourth column with chrX; Surprising
+#df = subset(df, DMC1Yaarep1 != "chrX")
+
+#fix the non-numeric argument error for column 4
+#class(df$DMC1Yaarep1) = "numeric"
+```
+
+Data represents 1000 bp windows of sequence coverage from DMC1 Yaa rep1, DMC1 Yaa rep2 and Input from Yaa strains and from B6 strain. 
+
+This is kind of arbitrary value. Feel free to smooth over various window sizes to determine which makes the data easiest to comprehend.
+
+```{r}
+k = 400 # need to set window length to calculate mean. This would be 400 windows of 1000 bp
+
+df2 <- rollapply(df[,4:7], width = k, FUN = mean, fill = NA) # rollapply is a R command from package zoo
+
+# First I am log2 transforming each value and centering it by dividing by the median value
+df3 <- as.data.frame(df2) %>%
+  drop_na %>%
+  apply(., 2, FUN = function(z) log2(z/median(z))) %>%
+  as.data.frame()
+
+data <- cbind(df[400:169477,1:3], df3)
+```
+
+```{r, fig.height= 4}
+# Just picking some colors to make the plot look nice
+mycolors <- c("steelblue", "darkorange",
+              "grey60", "violet")
+
+data %>%
+  filter(start >  150000000 & start < 170000000) %>%
+  select(-chr, -end) %>%
+  gather(key = chip, value, -start) %>%
+  ggplot(aes(x = start/1000000, y = 2^value, color = chip)) +
+    geom_line() +
+    scale_color_manual(values = mycolors) +
+    ylim(c(-1,4)) +
+    labs(y = "Estimated copy number", x = "MB") +
+    theme_bw() +
+    theme(
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14)
+    )
+
+```
+
+
+JAX website provides the following information- An approximately 4 MB region of the X chromosome that includes at least 13 known genes (spanning from Ofd1 to Mid1) was translocated to the Y chromosome adjacent to the pseudoautosomal region. Increased RNA expression of Msl3, Tlr7, Tmsb4x and Rab9 was detected in follicular B cells. Ofd1 is located at Chr X: 166390033. Therefore, the increase in copy number and the expansion looks good and is located at the right location (~166 Mb). 
+
+The increased signal near the end of the B6 sample is because of the fact that the wild-type mouse pseudoautosomal boundary is in the Mid1 gene that starts at ChrX 169685199-169990798 (mm10). This signal does not reach the estimate of 2 copies too. 
+
+```{r}
+#plotting only the Yaa and the B6 input samples
+data %>%
+  filter(start >  164000000 & start < 170000000) %>%
+  select(-chr, -end, "YaaInput", "B6Input", -DMC1Yaarep1, -DMC1Yaarep2) %>%
+  gather(key = input, value, -start) %>%
+  ggplot(aes(x = start/1000000, y = 2 ^ value, color = input)) +
+    geom_line() +
+    scale_color_manual(values = mycolors) +
+    ylim(c(0,4)) +
+    labs(y = "Estimated copy number", x = "MB") +
+    theme_bw() +
+    theme(
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14)
+    )
+```
+

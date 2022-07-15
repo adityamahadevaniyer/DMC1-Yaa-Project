@@ -1,0 +1,139 @@
+---
+title: "Read-density-calculation autosomalvYaa & B6vYaa"
+author: "Aditya Mahadevan"
+date: '2022-07-11'
+output: html_document
+---
+
+```{r}
+#Load all the packages
+library(tidyverse)
+library(edgeR)
+library(ggpubr)
+library(dplyr)
+```
+
+```{r}
+#Load the peakome file
+df <- as.matrix(read.table("dmc1_chip_atDMC1b6consensus_mm39_peakome.txt", sep = "\t", header = F))
+df = df[,c(1:3,11:14)] #extract only the relevant columns
+#Add the column names
+colnames(df) = c("chr", "start", "end", "yaarep1", "yaarep2", "b6rep1", "b6rep2")
+df = as.data.frame(df)
+df$peakID = paste0(df$chr,":",df$start,"-",df$end)
+counts <- subset(df, select = c(4:7))
+counts = apply(counts, 2, as.numeric)
+rownames(counts) = df$peakID
+counts = as.matrix(counts)
+```
+
+```{r}
+#edgeR normalization to get normalized counts
+group <- factor(c(2,2,1,1))
+y <- DGEList(counts, group=group)
+y <- calcNormFactors(y)
+ykeep <- DGEList(counts=as.matrix(counts))
+#ykeep <- ykeep[keep, , keep.lib.sizes=FALSE]  #no subsetting based on counts
+ykeep <- calcNormFactors(ykeep)
+ykeep$samples$group = c(2,2,1,1)
+ykeep <- estimateDisp(ykeep)
+et <- exactTest(ykeep)
+summary(decideTestsDGE(et, p.value=0.01))
+
+
+## Extract normalized counts as cpm
+counts.norm <- as.data.frame(round(cpm(ykeep, normalized.lib.sizes = TRUE), 2)) %>%
+  mutate(YAA = round(rowMeans(select(., starts_with("yaa")), na.rm = TRUE),2),
+         B6 = round(rowMeans(select(., starts_with("b6")), na.rm = TRUE),2))
+
+data <- cbind(counts.norm, et$table) %>%
+  rownames_to_column(var = "peak") %>%
+  mutate(fdr = p.adjust(method="fdr",p=PValue))
+```
+
+
+```{r}
+#Parse the rownames back to peak columns
+counts.norm = cbind(counts.norm, read.table(text=row.names(counts.norm), sep=":", 
+          header=FALSE, col.names = c("chr","start"), stringsAsFactors=FALSE))
+counts.norm = cbind(counts.norm, read.table(text=counts.norm$start, sep="-", 
+          header=FALSE, col.names = c("start1", "end"), stringsAsFactors=FALSE))
+counts.norm = counts.norm[,c(1:7,9,10)] #selecting the relevant columns again
+
+#Selecting only the Yaa regions
+yaa = subset(counts.norm, chr == "chrX" & start1 > 165000000 & end < 169350000)
+counts.norm$dup = ifelse(rownames(counts.norm) %in% rownames(yaa), "red", "black")
+```
+
+
+```{r}
+cutoff <- 0.05
+data.f <- data %>%
+  filter(fdr < cutoff) %>%
+  arrange(desc(logFC)) %>% column_to_rownames(var = "peak")
+
+#merge the data.f and counts.norm dataframes by common rownames
+data.f1 = merge(data.f, counts.norm, by = "row.names")
+
+#plot the counts now
+ggplot(data = data.f1, aes(x = B6.x, y = YAA.x)) +
+  geom_point(size = 2, colour = data.f1$dup) +
+  scale_y_log10(limits = c(0.1, 10000),
+                breaks = c( 1, 10, 100, 1000), 
+                labels = c( "1", "10", "100", "1000")) +
+  scale_x_log10(limits = c(0.1, 10000),
+                breaks = c( 1, 10, 100, 1000), 
+                labels = c( "1", "10", "100", "1000")) +
+  labs(title = "B6 vs Yaa", x = "B6 [CPM]", y = "Yaa [CPM]") +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.text=element_text())
+```
+
+
+```{r}
+#MA plot
+ggplot(data = data.f1, aes(x = logCPM, y = logFC)) +
+  geom_point(size = 2, colour = data.f1$dup) +
+  labs(title = "Chr 4 Yaa vs B6", y = "log2 fold change", x = "log2 average cpm") +
+  geom_hline(yintercept =  0) +
+  geom_hline(yintercept =  1, col = "red", linetype = 2) +
+  geom_hline(yintercept =  -1, col = "red", linetype = 2) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+```
+
+```{r}
+
+## Getting mean B6 and Yaa counts and
+#1. Plotting the log transformed mean counts
+counts.norm %>% 
+  rownames_to_column("peak") %>% 
+  gather(name,value,peak) %>% 
+  group_by(value,yaarep1, yaarep2) %>% 
+  mutate(mean_yaa = log2((yaarep1 + yaarep2)/2)) %>% 
+  mutate(mean_b6 = log2((b6rep1 + b6rep2)/2)) %>% 
+  ggplot(aes(y = mean_yaa, x = mean_b6)) + geom_point(colour = counts.norm$dup) + 
+  theme_bw() + xlab("log transformed mean DMC1 B6 counts") + 
+  ylab("log transformed mean DMC1 Yaa counts")
+
+#2. Plotting the raw mean counts
+counts.norm %>% 
+  rownames_to_column("peak") %>% 
+  gather(name,value,peak) %>% 
+  group_by(value,yaarep1, yaarep2) %>% 
+  mutate(mean_yaa = (yaarep1 + yaarep2)/2) %>% 
+  mutate(mean_b6 = (b6rep1 + b6rep2)/2) %>% 
+  ggplot(aes(y = mean_yaa, x = mean_b6)) + geom_point(colour = counts.norm$dup) +
+  theme_bw() + xlab("Mean DMC1 B6 counts") + ylab("Mean DMC1 Yaa counts")
+```
+
+```{r}
+
+```
+
+
+
